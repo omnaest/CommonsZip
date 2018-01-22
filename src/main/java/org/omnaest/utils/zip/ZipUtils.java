@@ -10,17 +10,35 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
+import java.util.zip.GZIPInputStream;
 
 import org.apache.commons.compress.archivers.ArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
+import org.omnaest.utils.PredicateUtils;
 
+/**
+ * Helper around gzip tar files
+ * <br>
+ * <br>
+ * Example:
+ * 
+ * <pre>
+ * Map<String, byte[]> map = ZipUtils.read()
+ *                                   .fromTarGzip(new File("some file.tar.gz"))
+ *                                   .toMap();
+ * 
+ * </pre>
+ * 
+ * @see #read()
+ * @author omnaest
+ */
 public class ZipUtils
 {
     public static interface Reader
     {
-        public TARReader fromTAR(File file) throws FileNotFoundException;
+        public TARReader fromTarGzip(File file) throws FileNotFoundException;
 
-        public TARReader fromTAR(InputStream inputStream);
+        public TARReader fromTarGzip(InputStream inputStream);
     }
 
     public static interface TARReader
@@ -67,20 +85,20 @@ public class ZipUtils
         {
 
             @Override
-            public TARReader fromTAR(File file) throws FileNotFoundException
+            public TARReader fromTarGzip(File file) throws FileNotFoundException
             {
-                return this.fromTAR(new FileInputStream(file));
+                return this.fromTarGzip(new FileInputStream(file));
             }
 
             @Override
-            public TARReader fromTAR(InputStream inputStream)
+            public TARReader fromTarGzip(InputStream inputStream)
             {
                 return new TARReader()
                 {
                     @Override
                     public Stream<TAREntry> toStream() throws IOException
                     {
-                        TarArchiveInputStream tarArchiveInputStream = new TarArchiveInputStream(new BufferedInputStream(inputStream));
+                        TarArchiveInputStream tarArchiveInputStream = new TarArchiveInputStream(new GZIPInputStream(new BufferedInputStream(inputStream)));
 
                         int recordSize = tarArchiveInputStream.getRecordSize();
 
@@ -90,19 +108,27 @@ public class ZipUtils
                                             try
                                             {
                                                 ArchiveEntry entry = tarArchiveInputStream.getNextEntry();
-                                                String name = entry.getName();
-                                                int size = (int) entry.getSize();
+                                                if (entry != null)
+                                                {
+                                                    String name = entry.getName();
+                                                    int size = (int) entry.getSize();
 
-                                                byte[] content = new byte[size];
-                                                org.apache.commons.io.IOUtils.read(tarArchiveInputStream, content);
+                                                    byte[] content = new byte[size];
+                                                    org.apache.commons.io.IOUtils.read(tarArchiveInputStream, content);
 
-                                                return new TAREntry(name, content);
+                                                    return new TAREntry(name, content);
+                                                }
+                                                else
+                                                {
+                                                    return null;
+                                                }
                                             }
                                             catch (IOException e)
                                             {
                                                 throw new IllegalStateException(e);
                                             }
                                         })
+                                        .filter(PredicateUtils.notNull())
                                         .onClose(() ->
                                         {
                                             try
