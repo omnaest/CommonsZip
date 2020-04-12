@@ -1,20 +1,29 @@
 package org.omnaest.utils.zip;
 
 import java.io.BufferedInputStream;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import java.util.zip.GZIPInputStream;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
 
 import org.apache.commons.compress.archivers.ArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.IOUtils;
 import org.omnaest.utils.PredicateUtils;
+import org.omnaest.utils.element.cached.CachedElement;
 
 /**
  * Helper around gzip tar files
@@ -34,11 +43,104 @@ import org.omnaest.utils.PredicateUtils;
  */
 public class ZipUtils
 {
+    private static final class ZipContentImpl implements ZipContent
+    {
+        private final CachedElement<byte[]> dataSupplierCache;
+
+        private ZipContentImpl(CachedElement<byte[]> dataSupplierCache)
+        {
+            this.dataSupplierCache = dataSupplierCache;
+        }
+
+        @Override
+        public ZipContent writeTo(File file)
+        {
+            try
+            {
+                FileUtils.writeByteArrayToFile(file, this.dataSupplierCache.get());
+            }
+            catch (IOException e)
+            {
+                throw new IllegalStateException(e);
+            }
+            return this;
+        }
+
+        @Override
+        public InputStream getEntry(String zipEntryName)
+        {
+            byte[] unzippedData = new byte[0];
+            byte[] zippedData = this.dataSupplierCache.get();
+            try (ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                    ByteArrayInputStream bais = new ByteArrayInputStream(zippedData);
+                    ZipInputStream zis = new ZipInputStream(bais))
+            {
+                ZipEntry zipEntry = zis.getNextEntry();
+                while (zipEntry != null)
+                {
+                    if (zipEntry.getName()
+                                .equals(zipEntryName))
+                    {
+                        IOUtils.copy(zis, baos);
+                        break;
+                    }
+
+                    zis.closeEntry();
+                    zipEntry = zis.getNextEntry();
+                }
+                baos.flush();
+                unzippedData = baos.toByteArray();
+            }
+            catch (IOException e)
+            {
+                throw new IllegalStateException(e);
+            }
+
+            return new ByteArrayInputStream(unzippedData);
+        }
+
+        @Override
+        public String getEntryAsString(String zipEntryName)
+        {
+            try
+            {
+                return IOUtils.toString(this.getEntry(zipEntryName), StandardCharsets.UTF_8);
+            }
+            catch (IOException e)
+            {
+                throw new IllegalStateException(e);
+            }
+        }
+    }
+
     public static interface Reader
     {
         public TARReader fromTarGzip(File file) throws FileNotFoundException;
 
         public TARReader fromTarGzip(InputStream inputStream);
+
+        public UncompressedContentReader fromUncompressedFile(File file);
+
+        public UncompressedContentReader fromUncompressedInputStream(InputStream inputStream);
+
+        public ZipContent fromZip(File file);
+    }
+
+    public static interface UncompressedContentReader
+    {
+
+        public ZipContent toZip(String zipEntryName);
+
+    }
+
+    public static interface ZipContent
+    {
+        public ZipContent writeTo(File file);
+
+        public InputStream getEntry(String zipEntryName);
+
+        public String getEntryAsString(String zipEntryName);
+
     }
 
     public static interface TARReader
@@ -87,7 +189,7 @@ public class ZipUtils
             @Override
             public TARReader fromTarGzip(File file) throws FileNotFoundException
             {
-                return this.fromTarGzip(new FileInputStream(file));
+                return this.fromTarGzip(new BufferedInputStream(new FileInputStream(file)));
             }
 
             @Override
@@ -159,6 +261,77 @@ public class ZipUtils
                     }
                 };
             }
+
+            @Override
+            public UncompressedContentReader fromUncompressedFile(File file)
+            {
+                try
+                {
+                    return this.fromUncompressedInputStream(new BufferedInputStream(new FileInputStream(file)));
+                }
+                catch (FileNotFoundException e)
+                {
+                    throw new IllegalArgumentException(e);
+                }
+            }
+
+            @Override
+            public UncompressedContentReader fromUncompressedInputStream(InputStream inputStream)
+            {
+                return new UncompressedContentReader()
+                {
+                    @Override
+                    public ZipContent toZip(String zipEntryName)
+                    {
+                        CachedElement<byte[]> dataSupplierCache = CachedElement.of(() ->
+                        {
+                            byte[] data = new byte[0];
+                            try (ByteArrayOutputStream baos = new ByteArrayOutputStream(); ZipOutputStream zipOutputStream = new ZipOutputStream(baos);)
+                            {
+                                zipOutputStream.putNextEntry(new ZipEntry(zipEntryName));
+                                IOUtils.copy(inputStream, zipOutputStream);
+                                zipOutputStream.close();
+                                baos.flush();
+                                data = baos.toByteArray();
+                            }
+                            catch (IOException e)
+                            {
+                                throw new IllegalStateException(e);
+                            }
+                            finally
+                            {
+                                try
+                                {
+                                    inputStream.close();
+                                }
+                                catch (IOException e)
+                                {
+                                    //
+                                }
+                            }
+                            return data;
+                        });
+                        return new ZipContentImpl(dataSupplierCache);
+                    }
+                };
+            }
+
+            @Override
+            public ZipContent fromZip(File file)
+            {
+                return new ZipContentImpl(CachedElement.of(() ->
+                {
+                    try
+                    {
+                        return FileUtils.readFileToByteArray(file);
+                    }
+                    catch (IOException e)
+                    {
+                        throw new IllegalStateException(e);
+                    }
+                }));
+            }
+
         };
     }
 }

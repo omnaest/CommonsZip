@@ -1,10 +1,14 @@
 package org.omnaest.utils.zip;
 
+import static org.junit.Assert.assertEquals;
+
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.IOUtils;
 import org.junit.Ignore;
 import org.junit.Test;
 
@@ -37,6 +41,23 @@ public class ZipUtilsTest
                    throw new IllegalStateException(e);
                }
            });
+    }
+
+    @Test
+    //    @Ignore
+    public void testToZip() throws Exception
+    {
+        File file = org.omnaest.utils.FileUtils.createRandomTempFile();
+        ZipUtils.read()
+                .fromUncompressedInputStream(IOUtils.toInputStream("test", StandardCharsets.UTF_8))
+                .toZip("test.txt")
+                .writeTo(file);
+
+        String content = ZipUtils.read()
+                                 .fromZip(file)
+                                 .getEntryAsString("test.txt");
+        assertEquals("test", content);
+
     }
 
 }
