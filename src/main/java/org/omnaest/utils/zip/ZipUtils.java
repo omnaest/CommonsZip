@@ -11,6 +11,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import java.util.zip.GZIPInputStream;
@@ -124,6 +125,10 @@ public class ZipUtils
         public UncompressedContentReader fromUncompressedInputStream(InputStream inputStream);
 
         public ZipContent fromZip(File file);
+
+        public GZIPReader fromGzip(InputStream inputStream) throws IOException;
+
+        public GZIPReader fromGzip(File file) throws IOException;
     }
 
     public static interface UncompressedContentReader
@@ -141,6 +146,13 @@ public class ZipUtils
 
         public String getEntryAsString(String zipEntryName);
 
+    }
+
+    public static interface GZIPReader
+    {
+        public InputStream asInputStream();
+
+        public byte[] asByteArray();
     }
 
     public static interface TARReader
@@ -168,6 +180,11 @@ public class ZipUtils
                 return content;
             }
 
+            public InputStream getContentAsInputStream()
+            {
+                return new ByteArrayInputStream(this.content);
+            }
+
             @Override
             public String toString()
             {
@@ -179,12 +196,41 @@ public class ZipUtils
         public Map<String, byte[]> toMap() throws IOException;
 
         public Stream<TAREntry> toStream() throws IOException;
+
+        public Optional<TAREntry> first() throws IOException;
     }
 
     public static Reader read()
     {
         return new Reader()
         {
+
+            @Override
+            public GZIPReader fromGzip(File file) throws IOException
+            {
+                return this.fromGzip(new BufferedInputStream(new FileInputStream(file)));
+            }
+
+            @Override
+            public GZIPReader fromGzip(InputStream inputStream) throws IOException
+            {
+                GZIPInputStream gzipInputStream = new GZIPInputStream(new BufferedInputStream(inputStream));
+                byte[] data = IOUtils.toByteArray(gzipInputStream);
+                return new GZIPReader()
+                {
+                    @Override
+                    public InputStream asInputStream()
+                    {
+                        return new ByteArrayInputStream(data);
+                    }
+
+                    @Override
+                    public byte[] asByteArray()
+                    {
+                        return data;
+                    }
+                };
+            }
 
             @Override
             public TARReader fromTarGzip(File file) throws FileNotFoundException
@@ -258,6 +304,13 @@ public class ZipUtils
                             });
 
                         return retmap;
+                    }
+
+                    @Override
+                    public Optional<TAREntry> first() throws IOException
+                    {
+                        return this.toStream()
+                                   .findFirst();
                     }
                 };
             }
