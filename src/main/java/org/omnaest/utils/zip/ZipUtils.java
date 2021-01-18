@@ -128,7 +128,10 @@ public class ZipUtils
 
         public GZIPReader fromGzip(InputStream inputStream) throws IOException;
 
+        public GZIPReader fromGzip(byte[] data) throws IOException;
+
         public GZIPReader fromGzip(File file) throws IOException;
+
     }
 
     public static interface UncompressedContentReader
@@ -214,22 +217,39 @@ public class ZipUtils
             @Override
             public GZIPReader fromGzip(InputStream inputStream) throws IOException
             {
-                GZIPInputStream gzipInputStream = new GZIPInputStream(new BufferedInputStream(inputStream));
-                byte[] data = IOUtils.toByteArray(gzipInputStream);
+                GZIPInputStream gzipInputStream = new GZIPInputStream(inputStream, 1024 * 1024);
                 return new GZIPReader()
                 {
+                    private InputStream inputStream = gzipInputStream;
+
                     @Override
                     public InputStream asInputStream()
                     {
-                        return new ByteArrayInputStream(data);
+                        return this.inputStream;
                     }
 
                     @Override
                     public byte[] asByteArray()
                     {
-                        return data;
+                        try
+                        {
+                            byte[] data = IOUtils.toByteArray(gzipInputStream);
+                            this.inputStream.close();
+                            this.inputStream = new ByteArrayInputStream(data);
+                            return data;
+                        }
+                        catch (IOException e)
+                        {
+                            throw new IllegalStateException(e);
+                        }
                     }
                 };
+            }
+
+            @Override
+            public GZIPReader fromGzip(byte[] data) throws IOException
+            {
+                return this.fromGzip(new ByteArrayInputStream(data));
             }
 
             @Override
