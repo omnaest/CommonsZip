@@ -141,6 +141,8 @@ public class ZipUtils
 
         public ZipContent fromZip(File file);
 
+        public ZipContent fromZip(byte[] data);
+
         public GZIPReader fromGzip(InputStream inputStream) throws IOException;
 
         public GZIPReader fromGzip(byte[] data) throws IOException;
@@ -407,17 +409,20 @@ public class ZipUtils
             @Override
             public ZipContent fromZip(File file)
             {
-                return new ZipContentImpl(CachedElement.of(() ->
+                try
                 {
-                    try
-                    {
-                        return FileUtils.readFileToByteArray(file);
-                    }
-                    catch (IOException e)
-                    {
-                        throw new IllegalStateException(e);
-                    }
-                }));
+                    return this.fromZip(FileUtils.readFileToByteArray(file));
+                }
+                catch (IOException e)
+                {
+                    throw new IllegalStateException(e);
+                }
+            }
+
+            @Override
+            public ZipContent fromZip(byte[] data)
+            {
+                return new ZipContentImpl(CachedElement.of(() -> data));
             }
 
         };
