@@ -36,6 +36,7 @@ import java.util.zip.ZipOutputStream;
 
 import org.apache.commons.compress.archivers.ArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
+import org.apache.commons.compress.compressors.CompressorException;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 import org.omnaest.utils.PredicateUtils;
@@ -149,6 +150,10 @@ public class ZipUtils
 
         public GZIPReader fromGzip(File file) throws IOException;
 
+        public BZ2Reader fromBZ2(File file) throws FileNotFoundException;
+
+        public BZ2Reader fromBZ2(InputStream inputStream);
+
     }
 
     public static interface UncompressedContentReader
@@ -218,6 +223,11 @@ public class ZipUtils
         public Stream<TAREntry> toStream() throws IOException;
 
         public Optional<TAREntry> first() throws IOException;
+    }
+
+    public static interface BZ2Reader
+    {
+        public InputStream asInputStream() throws FileNotFoundException, IOException;
     }
 
     public static Reader read()
@@ -423,6 +433,32 @@ public class ZipUtils
             public ZipContent fromZip(byte[] data)
             {
                 return new ZipContentImpl(CachedElement.of(() -> data));
+            }
+
+            @Override
+            public BZ2Reader fromBZ2(InputStream inputStream)
+            {
+                return new BZ2Reader()
+                {
+                    @Override
+                    public InputStream asInputStream() throws FileNotFoundException, IOException
+                    {
+                        try
+                        {
+                            return new org.apache.commons.compress.compressors.CompressorStreamFactory().createCompressorInputStream(new BufferedInputStream(inputStream));
+                        }
+                        catch (CompressorException e)
+                        {
+                            throw new IOException(e);
+                        }
+                    }
+                };
+            }
+
+            @Override
+            public BZ2Reader fromBZ2(File file) throws FileNotFoundException
+            {
+                return this.fromBZ2(new FileInputStream(file));
             }
 
         };
