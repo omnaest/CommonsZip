@@ -229,6 +229,8 @@ public class ZipUtils
 
         public TARReader fromTarGzip(InputStream inputStream);
 
+        public TARReader fromTarGzip(byte[] data);
+
         public UncompressedContentReader fromUncompressedFile(File file);
 
         public UncompressedContentReader fromUncompressedInputStream(InputStream inputStream);
@@ -399,6 +401,12 @@ public class ZipUtils
             public TARReader fromTarGzip(File file) throws FileNotFoundException
             {
                 return this.fromTarGzip(new BufferedInputStream(new FileInputStream(file)));
+            }
+
+            @Override
+            public TARReader fromTarGzip(byte[] data)
+            {
+                return this.fromTarGzip(new ByteArrayInputStream(data));
             }
 
             @Override
