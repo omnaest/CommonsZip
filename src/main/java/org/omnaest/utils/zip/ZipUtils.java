@@ -27,6 +27,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Supplier;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import java.util.zip.GZIPInputStream;
@@ -39,8 +40,14 @@ import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.compressors.CompressorException;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
+import org.omnaest.utils.ByteArrayUtils;
+import org.omnaest.utils.ByteArrayUtils.MultiByteArrayContainer;
+import org.omnaest.utils.CollectorUtils;
+import org.omnaest.utils.MapperUtils;
 import org.omnaest.utils.PredicateUtils;
 import org.omnaest.utils.element.cached.CachedElement;
+import org.omnaest.utils.exception.RuntimeIOException;
+import org.omnaest.utils.stream.Streamable;
 
 /**
  * Helper around gzip tar files
@@ -81,6 +88,76 @@ public class ZipUtils
                 throw new IllegalStateException(e);
             }
             return this;
+        }
+
+        @Override
+        public InputStream toInputStream()
+        {
+            return new ByteArrayInputStream(this.dataSupplierCache.get());
+        }
+
+        @Override
+        public Stream<ZipContentEntry> stream()
+        {
+            Map<String, byte[]> nameToData = new LinkedHashMap<>();
+
+            byte[] zippedData = this.dataSupplierCache.get();
+            try (ByteArrayInputStream bais = new ByteArrayInputStream(zippedData); ZipInputStream zis = new ZipInputStream(bais))
+            {
+                ZipEntry zipEntry = zis.getNextEntry();
+                while (zipEntry != null)
+                {
+                    try (ByteArrayOutputStream baos = new ByteArrayOutputStream())
+                    {
+                        IOUtils.copy(zis, baos);
+                        baos.flush();
+                        nameToData.put(zipEntry.getName(), baos.toByteArray());
+                    }
+
+                    zis.closeEntry();
+                    zipEntry = zis.getNextEntry();
+                }
+            }
+            catch (IOException e)
+            {
+                throw new IllegalStateException(e);
+            }
+
+            MultiByteArrayContainer<String> byteArrayContainer = ByteArrayUtils.toMultiByteArrayContainer(nameToData);
+
+            return byteArrayContainer.stream()
+                                     .map(entry ->
+                                     {
+                                         return new ZipContentEntry()
+                                         {
+                                             @Override
+                                             public String getName()
+                                             {
+                                                 return entry.getKey();
+                                             }
+
+                                             @Override
+                                             public String getAsString()
+                                             {
+                                                 return entry.get()
+                                                             .toString();
+                                             }
+
+                                             @Override
+                                             public InputStream getAsInputStream()
+                                             {
+                                                 return entry.get()
+                                                             .toInputStream();
+                                             }
+
+                                             @Override
+                                             public byte[] get()
+                                             {
+                                                 return entry.get()
+                                                             .toByteArray();
+                                             }
+                                         };
+                                     });
         }
 
         @Override
@@ -128,6 +205,22 @@ public class ZipUtils
                 throw new IllegalStateException(e);
             }
         }
+
+        @Override
+        public ExtractedZipContent toContainer()
+        {
+            Map<String, ZipContentEntry> nameToContent = this.stream()
+                                                             .collect(CollectorUtils.toLinkedHashMap(ZipContentEntry::getName, MapperUtils.identity()));
+            return new ExtractedZipContent()
+            {
+                @Override
+                public Stream<ZipContentEntry> stream()
+                {
+                    return nameToContent.values()
+                                        .stream();
+                }
+            };
+        }
     }
 
     public static interface Reader
@@ -143,6 +236,8 @@ public class ZipUtils
         public ZipContent fromZip(File file);
 
         public ZipContent fromZip(byte[] data);
+
+        public ZipContent fromZip(InputStream inputStream);
 
         public GZIPReader fromGzip(InputStream inputStream) throws IOException;
 
@@ -163,7 +258,7 @@ public class ZipUtils
 
     }
 
-    public static interface ZipContent
+    public static interface ZipContent extends Streamable<ZipContentEntry>
     {
         public ZipContent writeTo(File file);
 
@@ -171,6 +266,27 @@ public class ZipUtils
 
         public String getEntryAsString(String zipEntryName);
 
+        public InputStream toInputStream();
+
+        public ExtractedZipContent toContainer();
+
+    }
+
+    public static interface ExtractedZipContent extends Streamable<ZipContentEntry>
+    {
+
+    }
+
+    public static interface ZipContentEntry extends Supplier<byte[]>
+    {
+        public String getName();
+
+        @Override
+        public byte[] get();
+
+        public String getAsString();
+
+        public InputStream getAsInputStream();
     }
 
     public static interface GZIPReader
@@ -433,6 +549,19 @@ public class ZipUtils
             public ZipContent fromZip(byte[] data)
             {
                 return new ZipContentImpl(CachedElement.of(() -> data));
+            }
+
+            @Override
+            public ZipContent fromZip(InputStream inputStream)
+            {
+                try
+                {
+                    return this.fromZip(IOUtils.toByteArray(inputStream));
+                }
+                catch (IOException e)
+                {
+                    throw new RuntimeIOException(e);
+                }
             }
 
             @Override

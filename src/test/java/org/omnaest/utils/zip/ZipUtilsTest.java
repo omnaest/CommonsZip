@@ -20,12 +20,15 @@ import static org.junit.Assert.assertEquals;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 import org.junit.Ignore;
 import org.junit.Test;
+import org.omnaest.utils.zip.ZipUtils.ZipContentEntry;
 
 public class ZipUtilsTest
 {
@@ -59,7 +62,7 @@ public class ZipUtilsTest
     }
 
     @Test
-    //    @Ignore
+    @Ignore
     public void testToZip() throws Exception
     {
         File file = org.omnaest.utils.FileUtils.createRandomTempFile();
@@ -73,6 +76,23 @@ public class ZipUtilsTest
                                  .getEntryAsString("test.txt");
         assertEquals("test", content);
 
+    }
+
+    @Test
+    public void testStream() throws Exception
+    {
+        List<ZipContentEntry> entries = ZipUtils.read()
+                                                .fromZip(ZipUtils.read()
+                                                                 .fromUncompressedInputStream(IOUtils.toInputStream("test", StandardCharsets.UTF_8))
+                                                                 .toZip("test.txt")
+                                                                 .toInputStream())
+                                                .stream()
+                                                .collect(Collectors.toList());
+        assertEquals(1, entries.size());
+        assertEquals("test", entries.get(0)
+                                    .getAsString());
+        assertEquals("test.txt", entries.get(0)
+                                        .getName());
     }
 
 }
