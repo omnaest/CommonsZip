@@ -27,6 +27,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.BiConsumer;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -47,6 +48,7 @@ import org.omnaest.utils.MapperUtils;
 import org.omnaest.utils.PredicateUtils;
 import org.omnaest.utils.element.cached.CachedElement;
 import org.omnaest.utils.exception.RuntimeIOException;
+import org.omnaest.utils.exception.handler.ExceptionHandler;
 import org.omnaest.utils.stream.Streamable;
 
 /**
@@ -251,6 +253,12 @@ public class ZipUtils
 
         public BZ2Reader fromBZ2(InputStream inputStream);
 
+        public Reader withExceptionHandler(ExceptionHandler exceptionHandler);
+
+        public Reader withSilentlyIgnoreExceptionHandler();
+
+        public Reader withExceptionHandler(BiConsumer<String, Exception> exceptionHandler);
+
     }
 
     public static interface UncompressedContentReader
@@ -352,6 +360,26 @@ public class ZipUtils
     {
         return new Reader()
         {
+            private ExceptionHandler exceptionHandler = ExceptionHandler.rethrowingExceptionHandler();
+
+            @Override
+            public Reader withExceptionHandler(ExceptionHandler exceptionHandler)
+            {
+                this.exceptionHandler = exceptionHandler;
+                return this;
+            }
+
+            @Override
+            public Reader withExceptionHandler(BiConsumer<String, Exception> exceptionHandler)
+            {
+                return this.withExceptionHandler(ExceptionHandler.fromBiConsumer(exceptionHandler));
+            }
+
+            @Override
+            public Reader withSilentlyIgnoreExceptionHandler()
+            {
+                return this.withExceptionHandler(ExceptionHandler.noOperationExceptionHandler());
+            }
 
             @Override
             public GZIPReader fromGzip(File file) throws IOException
@@ -444,7 +472,8 @@ public class ZipUtils
                                             }
                                             catch (IOException e)
                                             {
-                                                throw new IllegalStateException(e);
+                                                exceptionHandler.accept(e);
+                                                return null;
                                             }
                                         })
                                         .filter(PredicateUtils.notNull())
