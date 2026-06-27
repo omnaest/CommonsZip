@@ -130,8 +130,7 @@ public class ZipUtils
             return byteArrayContainer.stream()
                                      .map(entry ->
                                      {
-                                         return new ZipContentEntry()
-                                         {
+                                         return new ZipContentEntry() {
                                              @Override
                                              public String getName()
                                              {
@@ -213,8 +212,7 @@ public class ZipUtils
         {
             Map<String, ZipContentEntry> nameToContent = this.stream()
                                                              .collect(CollectorUtils.toLinkedHashMap(ZipContentEntry::getName, MapperUtils.identity()));
-            return new ExtractedZipContent()
-            {
+            return new ExtractedZipContent() {
                 @Override
                 public Stream<ZipContentEntry> stream()
                 {
@@ -358,8 +356,7 @@ public class ZipUtils
 
     public static Reader read()
     {
-        return new Reader()
-        {
+        return new Reader() {
             private ExceptionHandler exceptionHandler = ExceptionHandler.rethrowingExceptionHandler();
 
             @Override
@@ -391,8 +388,7 @@ public class ZipUtils
             public GZIPReader fromGzip(InputStream inputStream) throws IOException
             {
                 GZIPInputStream gzipInputStream = new GZIPInputStream(inputStream, 1024 * 1024);
-                return new GZIPReader()
-                {
+                return new GZIPReader() {
                     private InputStream inputStream = gzipInputStream;
 
                     @Override
@@ -440,8 +436,7 @@ public class ZipUtils
             @Override
             public TARReader fromTarGzip(InputStream inputStream)
             {
-                return new TARReader()
-                {
+                return new TARReader() {
                     @Override
                     public Stream<TAREntry> toStream() throws IOException
                     {
@@ -531,8 +526,7 @@ public class ZipUtils
             @Override
             public UncompressedContentReader fromUncompressedInputStream(InputStream inputStream)
             {
-                return new UncompressedContentReader()
-                {
+                return new UncompressedContentReader() {
                     @Override
                     public ZipContent toZip(String zipEntryName)
                     {
@@ -604,8 +598,7 @@ public class ZipUtils
             @Override
             public BZ2Reader fromBZ2(InputStream inputStream)
             {
-                return new BZ2Reader()
-                {
+                return new BZ2Reader() {
                     @Override
                     public InputStream asInputStream() throws FileNotFoundException, IOException
                     {
